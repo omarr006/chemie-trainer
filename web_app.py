@@ -129,6 +129,7 @@ def start_new_cycle():
     st.session_state.last_check_info = {}
     st.session_state.stats_correct = 0
     st.session_state.stats_wrong = 0
+    st.session_state.wrong_answers_log = [] # Log für falsche Eingaben in diesem Zyklus
 
 # --- 3. SESSION STATE INITIALISIERUNG ---
 if 'index' not in st.session_state:
@@ -204,6 +205,12 @@ if not st.session_state.finished:
                 st.session_state.stats_correct += 1
             else:
                 st.session_state.stats_wrong += 1
+                # Loggen der falschen Antwort
+                st.session_state.wrong_answers_log.append({
+                    "name": current_stoff["name"],
+                    "correct": current_stoff["formel"],
+                    "input": user_input
+                })
                 for s in st.session_state.stoffe:
                     if s["name"] == current_stoff["name"]:
                         s["falsch"] += 1
@@ -246,6 +253,23 @@ else:
     # --- STATISTIK AM ENDE ---
     st.success("Zyklus beendet!")
     
+    # 1. Detaillierte Auswertung dieses Durchlaufs
+    if st.session_state.wrong_answers_log:
+        st.subheader("❌ Deine falschen Antworten in diesem Durchlauf")
+        
+        # Als Tabelle anzeigen
+        df_log = pd.DataFrame(st.session_state.wrong_answers_log)
+        df_log.columns = ["Stoffname", "Richtige Formel", "Deine Eingabe"]
+        st.table(df_log)
+    else:
+        st.balloons()
+        st.write("### Perfekt! Alle Fragen in diesem Durchlauf richtig.")
+
+    st.markdown("---")
+    
+    # 2. Langzeit-Statistik (Gruppierung)
+    st.subheader("📊 Gesamt-Statistik (Problemstoffe)")
+    
     fehler_gefunden = False
     
     # Gruppierung
@@ -259,16 +283,15 @@ else:
             fehler_gruppen[f].append(stoff)
     
     if not fehler_gefunden:
-        st.balloons()
-        st.write("Perfekt! Keine Fehler.")
+        st.write("Bisher keine Fehler verzeichnet.")
     else:
-        st.write("### Deine Fehlerstatistik:")
         sorted_keys = sorted(fehler_gruppen.keys())
         for anz in sorted_keys:
-            st.subheader(f"{anz}x falsch beantwortet:")
+            st.write(f"**{anz}x falsch beantwortet:**")
             for s in fehler_gruppen[anz]:
-                st.write(f"- **{s['name']}** → {s['formel']}")
+                st.write(f"- {s['name']} → {s['formel']}")
 
+    st.markdown("---")
     if st.button("Neuen Zyklus starten"):
         start_new_cycle()
         st.rerun()
