@@ -166,6 +166,12 @@ with st.sidebar:
     else:
         st.info("Noch keine Antwort gegeben.")
 
+    st.write("---")
+    if not st.session_state.finished:
+        if st.button("🏁 Training beenden & Auswertung"):
+            st.session_state.finished = True
+            st.rerun()
+
 
 if not st.session_state.finished:
     # Fortschritt
