@@ -1,5 +1,7 @@
 import streamlit as st
 import random
+import pandas as pd
+import altair as alt
 
 # --- 1. DATENBASIS ---
 if 'stoffe' not in st.session_state:
@@ -121,8 +123,12 @@ def start_new_cycle():
     st.session_state.abfrage_liste = list(st.session_state.stoffe)
     random.shuffle(st.session_state.abfrage_liste)
     st.session_state.index = 0
-    st.session_state.feedback = None
     st.session_state.finished = False
+    # Neue State-Variablen für die gewünschten Features
+    st.session_state.show_result_mode = False
+    st.session_state.last_check_info = {}
+    st.session_state.stats_correct = 0
+    st.session_state.stats_wrong = 0
 
 # --- 3. SESSION STATE INITIALISIERUNG ---
 if 'index' not in st.session_state:
@@ -130,6 +136,36 @@ if 'index' not in st.session_state:
 
 # --- 4. UI (DAS AUSSEHEN) ---
 st.title("🧪 Chemie Nomenklatur Trainer")
+
+# --- CHART IN SIDEBAR ---
+with st.sidebar:
+    st.header("Statistik (Aktueller Lauf)")
+    
+    # Daten für Pie Chart erstellen
+    chart_data = pd.DataFrame({
+        'Status': ['Richtig', 'Falsch'],
+        'Anzahl': [st.session_state.stats_correct, st.session_state.stats_wrong]
+    })
+    
+    # Nur anzeigen wenn schon Fragen beantwortet wurden
+    if st.session_state.stats_correct + st.session_state.stats_wrong > 0:
+        base = alt.Chart(chart_data).encode(
+            theta=alt.Theta("Anzahl", stack=True)
+        )
+        pie = base.mark_arc(outerRadius=120).encode(
+            color=alt.Color("Status", scale=alt.Scale(domain=['Richtig', 'Falsch'], range=['green', 'red'])),
+            order=alt.Order("Status", sort="descending"),
+            tooltip=["Status", "Anzahl"]
+        )
+        text = base.mark_text(radius=140).encode(
+            text="Anzahl",
+            order=alt.Order("Status", sort="descending"),
+            color=alt.value("black")
+        )
+        st.altair_chart(pie + text, use_container_width=True)
+    else:
+        st.info("Noch keine Antwort gegeben.")
+
 
 if not st.session_state.finished:
     # Fortschritt
@@ -141,45 +177,64 @@ if not st.session_state.finished:
 
     # Aktueller Stoff
     current_stoff = st.session_state.abfrage_liste[current]
-    st.header(current_stoff["name"])
+    
+    if not st.session_state.show_result_mode:
+        # --- FRAGE MODUS ---
+        st.header(current_stoff["name"])
 
-    # Eingabeformular
-    with st.form(key='answer_form', clear_on_submit=True):
-        user_input = st.text_input("Formel eingeben:", key="input_field")
-        submit_button = st.form_submit_button(label='Prüfen')
+        with st.form(key='answer_form'):
+            user_input = st.text_input("Formel eingeben:", key="input_field")
+            submit_button = st.form_submit_button(label='Prüfen')
 
-    # Logik beim Klicken
-    if submit_button:
-        norm_input = normalisiere_eingabe(user_input)
-        korrekt = normalisiere_eingabe(current_stoff["formel"])
-
-        if norm_input == korrekt:
-            st.success(f"Richtig! {current_stoff['formel']}")
-            st.session_state.feedback = "correct"
+        if submit_button:
+            norm_input = normalisiere_eingabe(user_input)
+            korrekt = normalisiere_eingabe(current_stoff["formel"])
+            
+            is_correct = (norm_input == korrekt)
+            
+            # Daten aktualisieren
             current_stoff["abgefragt"] += 1
-        else:
-            # Finde den originalen Stoff im Hauptspeicher und erhöhe Fehlerzähler
-            for s in st.session_state.stoffe:
-                if s["name"] == current_stoff["name"]:
-                    s["falsch"] += 1
-                    s["abgefragt"] += 1
-            st.error(f"Falsch! Richtige Antwort: {current_stoff['formel']}")
-            st.session_state.feedback = "wrong"
+            if is_correct:
+                st.session_state.stats_correct += 1
+            else:
+                st.session_state.stats_wrong += 1
+                for s in st.session_state.stoffe:
+                    if s["name"] == current_stoff["name"]:
+                        s["falsch"] += 1
+                        s["abgefragt"] += 1
+            
+            # Ergebnis speichern für die Anzeige
+            st.session_state.last_check_info = {
+                "correct": is_correct,
+                "user_formel": current_stoff["formel"], # Die korrekte Formel zum Anzeigen
+                "input": user_input
+            }
+            
+            st.session_state.show_result_mode = True
+            st.rerun()
+            
+    else:
+        # --- ERGEBNIS MODUS ---
+        st.header(current_stoff["name"])
         
-        # Zum nächsten springen (Session State Logik)
-        st.session_state.index += 1
-        if st.session_state.index >= len(st.session_state.abfrage_liste):
-            st.session_state.finished = True
+        info = st.session_state.last_check_info
+        
+        if info["correct"]:
+            st.success(f"✅ Richtig! Die Formel ist **{info['user_formel']}**")
         else:
-            # Automatischer Rerun, um die nächste Frage anzuzeigen
-            # Da wir clear_on_submit verwendet haben, ist das Eingabefeld leer
+            st.error(f"❌ Falsch! Deine Eingabe: {info['input']}")
+            st.info(f"👉 **Die richtige Lösung ist:**  {info['user_formel']}")
+            
+        # Button für nächste Frage
+        if st.button("Nächste Frage ▶"):
+            st.session_state.show_result_mode = False
+            st.session_state.index += 1
+            
+            if st.session_state.index >= len(st.session_state.abfrage_liste):
+                st.session_state.finished = True
+                
             st.rerun()
 
-    # Falls wir im nächsten Render-Zyklus noch die Antwort anzeigen wollen, ist das bei Streamlit tricky, 
-    # da st.rerun() sofort das UI neu zeichnet.
-    # Bei dieser einfachen Implementierung sieht man das Feedback nur kurz, wenn man nicht rerunnt,
-    # aber wenn man rerunnt, ist das Feedback weg.
-    # Besserer Ansatz: State für "Answer Reviewed"
     
 else:
     # --- STATISTIK AM ENDE ---
