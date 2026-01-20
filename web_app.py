@@ -136,7 +136,13 @@ if 'index' not in st.session_state:
     start_new_cycle()
 
 # --- 4. UI (DAS AUSSEHEN) ---
-st.title("🧪 Chemie Nomenklatur Trainer")
+col1, col2 = st.columns([8, 1])
+with col1:
+    st.title("🧪 Chemie Nomenklatur Trainer")
+with col2:
+    st.write("") # Spacer
+    st.write("")
+    st.link_button("❓", "https://www.youtube.com/watch?v=xvFZjo5PgG0&list=RDxvFZjo5PgG0&start_radio=1", help="Hilfe?")
 
 # --- CHART IN SIDEBAR ---
 with st.sidebar:
